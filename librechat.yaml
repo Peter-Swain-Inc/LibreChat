@@ -14,11 +14,9 @@ endpoints:
   anthropic:
     apiKey: "${ANTHROPIC_API_KEY}"
     models:
-      default:
-        - claude-opus-4-6
-        - claude-sonnet-4-6
-        - claude-haiku-4-5-20251001
-      fetch: false
+      - claude-opus-4-6
+      - claude-sonnet-4-6
+      - claude-haiku-4-5-20251001
     titleConvo: true
     titleModel: "claude-haiku-4-5-20251001"
 
