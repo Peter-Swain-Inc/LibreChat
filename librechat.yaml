@@ -1,0 +1,30 @@
+version: 1.2.1
+
+cache: true
+
+interface:
+  endpointsMenu: true
+  modelSelect: true
+  parameters: true
+  sidePanel: true
+  presets: true
+  prompts: true
+
+endpoints:
+  anthropic:
+    apiKey: "${ANTHROPIC_API_KEY}"
+    models:
+      default:
+        - claude-opus-4-6
+        - claude-sonnet-4-6
+        - claude-haiku-4-5-20251001
+      fetch: false
+    titleConvo: true
+    titleModel: "claude-haiku-4-5-20251001"
+
+mcpServers:
+  futureproof:
+    type: streamable-http
+    url: https://mcp.befutureproof.ai
+    timeout: 30000
+    initTimeout: 30000
