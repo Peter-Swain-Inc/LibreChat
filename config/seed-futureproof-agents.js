@@ -804,32 +804,84 @@ const AGENTS = [
 
 async function seedFutureProofAgents(mongoose) {
   const Agent = mongoose.models.Agent;
+  const AclEntry = mongoose.models.AclEntry;
+
   if (!Agent) {
     console.log('[FutureProof] Agent model not found — skipping agent seed');
     return;
   }
 
-  let created = 0;
-  let skipped = 0;
-
-  for (const agentData of AGENTS) {
-    const existing = await Agent.findOne({ id: agentData.id }).lean();
-    if (existing) {
-      skipped++;
-      continue;
-    }
-
-    const timestamp = new Date();
-    await Agent.create({
-      ...agentData,
-      author: new mongoose.Types.ObjectId(agentData.author),
-      versions: [{ ...agentData, createdAt: timestamp, updatedAt: timestamp }],
-      mcpServerNames: ['futureproof'],
-    });
-    created++;
+  if (!AclEntry) {
+    console.log('[FutureProof] AclEntry model not found — skipping agent seed');
+    return;
   }
 
-  console.log(`[FutureProof] Agent seed complete — ${created} created, ${skipped} already existed`);
+  const FP_AUTHOR_OID = new mongoose.Types.ObjectId(FP_AUTHOR_ID);
+  let created = 0;
+  let skipped = 0;
+  let aclGranted = 0;
+
+  for (const agentData of AGENTS) {
+    let agentDoc = await Agent.findOne({ id: agentData.id }).lean();
+
+    if (!agentDoc) {
+      const timestamp = new Date();
+      const created_doc = await Agent.create({
+        ...agentData,
+        author: FP_AUTHOR_OID,
+        versions: [{ ...agentData, createdAt: timestamp, updatedAt: timestamp }],
+        mcpServerNames: ['futureproof'],
+      });
+      agentDoc = created_doc.toObject ? created_doc.toObject() : created_doc;
+      created++;
+    } else {
+      skipped++;
+    }
+
+    // Ensure public ACL entry exists — agents without one are invisible to all users
+    const existingPublicAcl = await AclEntry.findOne({
+      principalType: 'public',
+      resourceType: 'agent',
+      resourceId: agentDoc._id,
+    }).lean();
+
+    if (!existingPublicAcl) {
+      // Grant public VIEW access so all users can see and use this agent
+      await AclEntry.create({
+        principalType: 'public',
+        resourceType: 'agent',
+        resourceId: agentDoc._id,
+        permBits: 1, // VIEW
+        grantedBy: FP_AUTHOR_OID,
+        grantedAt: new Date(),
+      });
+
+      // Grant system author OWNER access (VIEW|EDIT|DELETE|SHARE = 15)
+      await AclEntry.findOneAndUpdate(
+        {
+          principalType: 'user',
+          principalId: FP_AUTHOR_OID,
+          resourceType: 'agent',
+          resourceId: agentDoc._id,
+        },
+        {
+          $set: {
+            principalModel: 'User',
+            permBits: 15,
+            grantedBy: FP_AUTHOR_OID,
+            grantedAt: new Date(),
+          },
+        },
+        { upsert: true, new: true },
+      );
+
+      aclGranted++;
+    }
+  }
+
+  console.log(
+    `[FutureProof] Agent seed complete — ${created} created, ${skipped} already existed, ${aclGranted} ACL grants added`,
+  );
 }
 
 module.exports = { seedFutureProofAgents };
