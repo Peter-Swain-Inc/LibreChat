@@ -802,6 +802,41 @@ const AGENTS = [
     ['Design my beta testing programme', 'Create a beta user onboarding plan', 'Build a feedback collection system for beta', 'Plan my product beta launch']),
 ];
 
+const FP_CATEGORIES = [
+  // These two (hr, finance) already exist as LibreChat built-ins — upsert is a no-op for them
+  { value: 'audience-insight', label: 'Audience Insight', description: 'Research and profile your ideal clients', order: 10, custom: true },
+  { value: 'brand', label: 'Brand & Thought Leadership', description: 'Build authority and differentiate your brand', order: 11, custom: true },
+  { value: 'retention', label: 'Retention & Referrals', description: 'Grow LTV and referral revenue', order: 12, custom: true },
+  { value: 'customer-service', label: 'Customer Service', description: 'Support, NPS, and win-back', order: 13, custom: true },
+  { value: 'operations', label: 'Operations & Scale', description: 'SOPs, proposals, and processes', order: 14, custom: true },
+  { value: 'communications', label: 'Communications & PR', description: 'PR, scripts, and internal comms', order: 15, custom: true },
+  { value: 'strategy', label: 'Strategy', description: 'Founder decision support and roadmaps', order: 16, custom: true },
+  { value: 'social-proof', label: 'Social Proof', description: 'Testimonials and case studies', order: 17, custom: true },
+  { value: 'legal', label: 'Legal & Contracts', description: 'NDAs, T&Cs, and contract review', order: 18, custom: true },
+  { value: 'product', label: 'Product & Innovation', description: 'Roadmaps, features, and beta programs', order: 19, custom: true },
+  { value: 'analytics', label: 'Analytics & Reporting', description: 'Data interpretation and dashboards', order: 20, custom: true },
+];
+
+async function seedFPCategories(mongoose) {
+  const AgentCategory = mongoose.models.AgentCategory;
+  if (!AgentCategory) {
+    console.log('[FutureProof] AgentCategory model not found — skipping category seed');
+    return;
+  }
+
+  let added = 0;
+  for (const cat of FP_CATEGORIES) {
+    const result = await AgentCategory.findOneAndUpdate(
+      { value: cat.value },
+      { $setOnInsert: { ...cat, isActive: true } },
+      { upsert: true, new: false },
+    );
+    if (!result) added++;
+  }
+
+  console.log(`[FutureProof] Category seed complete — ${added} added`);
+}
+
 async function seedFutureProofAgents(mongoose) {
   const Agent = mongoose.models.Agent;
   const AclEntry = mongoose.models.AclEntry;
@@ -878,6 +913,21 @@ async function seedFutureProofAgents(mongoose) {
       aclGranted++;
     }
   }
+
+  // Patch any existing FP agents missing model/provider (e.g. from an earlier broken seed)
+  const agentIds = AGENTS.map((a) => a.id);
+  const patchResult = await Agent.updateMany(
+    {
+      id: { $in: agentIds },
+      $or: [{ model: { $exists: false } }, { model: '' }, { provider: { $exists: false } }, { provider: '' }],
+    },
+    { $set: { model: FP_MODEL, provider: FP_PROVIDER } },
+  );
+  if (patchResult.modifiedCount > 0) {
+    console.log(`[FutureProof] Patched ${patchResult.modifiedCount} agents missing model/provider`);
+  }
+
+  await seedFPCategories(mongoose);
 
   console.log(
     `[FutureProof] Agent seed complete — ${created} created, ${skipped} already existed, ${aclGranted} ACL grants added`,
