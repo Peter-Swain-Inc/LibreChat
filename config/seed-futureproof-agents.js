@@ -914,17 +914,47 @@ async function seedFutureProofAgents(mongoose) {
     }
   }
 
-  // Patch any existing FP agents missing model/provider (e.g. from an earlier broken seed)
+  // Patch FP agents missing model/provider (e.g. from an earlier broken seed)
   const agentIds = AGENTS.map((a) => a.id);
-  const patchResult = await Agent.updateMany(
+  const fpPatchResult = await Agent.updateMany(
     {
       id: { $in: agentIds },
-      $or: [{ model: { $exists: false } }, { model: '' }, { provider: { $exists: false } }, { provider: '' }],
+      $or: [
+        { model: { $exists: false } },
+        { model: null },
+        { model: '' },
+        { provider: { $exists: false } },
+        { provider: null },
+        { provider: '' },
+      ],
     },
     { $set: { model: FP_MODEL, provider: FP_PROVIDER } },
   );
-  if (patchResult.modifiedCount > 0) {
-    console.log(`[FutureProof] Patched ${patchResult.modifiedCount} agents missing model/provider`);
+  if (fpPatchResult.modifiedCount > 0) {
+    console.log(`[FutureProof] Patched ${fpPatchResult.modifiedCount} FP agents missing model/provider`);
+  }
+
+  // Patch ANY agent with provider="agents" — that's the meta-endpoint, never a valid LLM provider.
+  // Also patch agents with anthropic provider but no model set.
+  const brokenPatchResult = await Agent.updateMany(
+    {
+      $or: [
+        { provider: 'agents' },
+        { provider: { $exists: false } },
+        { provider: null },
+        { provider: '' },
+        {
+          $and: [
+            { provider: FP_PROVIDER },
+            { $or: [{ model: { $exists: false } }, { model: null }, { model: '' }] },
+          ],
+        },
+      ],
+    },
+    { $set: { model: FP_MODEL, provider: FP_PROVIDER } },
+  );
+  if (brokenPatchResult.modifiedCount > 0) {
+    console.log(`[FutureProof] Patched ${brokenPatchResult.modifiedCount} agents with invalid/missing provider or model`);
   }
 
   await seedFPCategories(mongoose);
