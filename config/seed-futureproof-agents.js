@@ -934,6 +934,15 @@ async function seedFutureProofAgents(mongoose) {
     console.log(`[FutureProof] Patched ${fpPatchResult.modifiedCount} FP agents missing model/provider`);
   }
 
+  // Diagnostic: log all agents with missing/invalid model or provider
+  const VALID_PROVIDERS = new Set(['openAI', 'azureOpenAI', 'google', 'anthropic', 'assistants', 'azureAssistants', 'bedrock', 'gptPlugins', 'custom']);
+  const allAgents = await Agent.find({}, { name: 1, model: 1, provider: 1, id: 1 }).lean();
+  const badAgents = allAgents.filter((a) => !a.model || !VALID_PROVIDERS.has(a.provider));
+  if (badAgents.length > 0) {
+    console.log(`[FutureProof] Found ${badAgents.length} agents with missing/invalid model or provider:`);
+    badAgents.forEach((a) => console.log(`  - "${a.name}" id=${a.id} model=${a.model || 'MISSING'} provider=${a.provider || 'MISSING'}`));
+  }
+
   // Patch ANY agent with provider="agents" — that's the meta-endpoint, never a valid LLM provider.
   // Also patch agents with anthropic provider but no model set.
   const brokenPatchResult = await Agent.updateMany(
@@ -955,6 +964,15 @@ async function seedFutureProofAgents(mongoose) {
   );
   if (brokenPatchResult.modifiedCount > 0) {
     console.log(`[FutureProof] Patched ${brokenPatchResult.modifiedCount} agents with invalid/missing provider or model`);
+  }
+
+  // Catch-all: patch any remaining agent with missing model regardless of provider
+  const missingModelResult = await Agent.updateMany(
+    { $or: [{ model: { $exists: false } }, { model: null }, { model: '' }] },
+    { $set: { model: FP_MODEL, provider: FP_PROVIDER } },
+  );
+  if (missingModelResult.modifiedCount > 0) {
+    console.log(`[FutureProof] Catch-all patched ${missingModelResult.modifiedCount} agents missing a model`);
   }
 
   await seedFPCategories(mongoose);
