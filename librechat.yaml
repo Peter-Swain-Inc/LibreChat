@@ -23,7 +23,7 @@ interface:
     share: false
     public: false
   marketplace:
-    use: false
+    use: true
   mcpServers:
     use: true
     create: true
