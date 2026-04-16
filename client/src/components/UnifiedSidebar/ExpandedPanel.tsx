@@ -1,49 +1,47 @@
 import { memo, useCallback, lazy, Suspense } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useRecoilValue } from 'recoil';
-import { SquarePen } from 'lucide-react';
-import { QueryKeys } from 'librechat-data-provider';
+import { LayoutGrid } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Skeleton, Sidebar, Button, TooltipAnchor } from '@librechat/client';
 import type { NavLink } from '~/common';
 import { CLOSE_SIDEBAR_ID } from '~/components/Chat/Menus/OpenSidebar';
 import { useActivePanel, resolveActivePanel } from '~/Providers';
-import { useLocalize, useNewConvo } from '~/hooks';
-import { clearMessagesCache, cn } from '~/utils';
-import store from '~/store';
+import { useLocalize, useShowMarketplace } from '~/hooks';
+import { cn } from '~/utils';
 
 const AccountSettings = lazy(() => import('~/components/Nav/AccountSettings'));
 
-const NewChatButton = memo(function NewChatButton() {
+const MarketplaceButton = memo(function MarketplaceButton() {
   const localize = useLocalize();
-  const queryClient = useQueryClient();
-  const { newConversation } = useNewConvo();
-  const conversation = useRecoilValue(store.conversationByIndex(0));
+  const navigate = useNavigate();
+  const showAgentMarketplace = useShowMarketplace();
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>) => {
       if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
         e.preventDefault();
-        clearMessagesCache(queryClient, conversation?.conversationId);
-        queryClient.invalidateQueries([QueryKeys.messages]);
-        newConversation();
+        navigate('/agents');
       }
     },
-    [queryClient, conversation?.conversationId, newConversation],
+    [navigate],
   );
+
+  if (!showAgentMarketplace) {
+    return null;
+  }
 
   return (
     <TooltipAnchor
       side="right"
-      description={localize('com_ui_new_chat')}
+      description={localize('com_agents_marketplace')}
       render={
         <a
-          href="/c/new"
-          data-testid="new-chat-button"
-          aria-label={localize('com_ui_new_chat')}
+          href="/agents"
+          data-testid="nav-agents-marketplace-button"
+          aria-label={localize('com_agents_marketplace')}
           className="flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-surface-hover"
           onClick={handleClick}
         >
-          <SquarePen className="h-5 w-5 text-text-primary" />
+          <LayoutGrid className="h-5 w-5 text-text-primary" />
         </a>
       }
     />
@@ -142,7 +140,7 @@ function ExpandedPanel({
           </Button>
         }
       />
-      <NewChatButton />
+      <MarketplaceButton />
       <div className="mx-2 border-b border-border-light" />
       <div className="flex flex-col gap-1 overflow-y-auto">
         {links.map((link) => (

@@ -1,10 +1,9 @@
 import React, { useRef, useCallback, useMemo, useEffect } from 'react';
-import { LayoutGrid } from 'lucide-react';
+import { SquarePen } from 'lucide-react';
 import { useRecoilValue } from 'recoil';
 import { useDrag, useDrop } from 'react-dnd';
 import { Skeleton } from '@librechat/client';
-import { useNavigate } from 'react-router-dom';
-import { useQueries } from '@tanstack/react-query';
+import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { QueryKeys, dataService } from 'librechat-data-provider';
 import type { Agent, TEndpointsConfig, TModelSpec } from 'librechat-data-provider';
 import type { AgentQueryResult } from '~/common';
@@ -12,13 +11,13 @@ import {
   useGetConversation,
   useFavorites,
   useLocalize,
-  useShowMarketplace,
   useNewConvo,
 } from '~/hooks';
 import { useGetEndpointsQuery, useGetStartupConfig } from '~/data-provider';
 import { useAssistantsMapContext, useAgentsMapContext } from '~/Providers';
 import useSelectMention from '~/hooks/Input/useSelectMention';
 import FavoriteItem from './FavoriteItem';
+import { clearMessagesCache } from '~/utils';
 import store from '~/store';
 
 /** Height intentionally matches FavoriteItem (px-3 py-2 + h-5 icon) to keep the CellMeasurerCache valid across the isAgentsLoading transition. */
@@ -29,7 +28,7 @@ const FavoriteItemSkeleton = () => (
   </div>
 );
 
-const MarketplaceSkeleton = () => (
+const NewChatSkeleton = () => (
   <div className="flex w-full items-center rounded-lg px-3 py-2">
     <Skeleton className="mr-2 h-5 w-5" />
     <Skeleton className="h-4 w-28" />
@@ -123,12 +122,12 @@ export default function FavoritesList({
   isSmallScreen?: boolean;
   toggleNav?: () => void;
 }) {
-  const navigate = useNavigate();
   const localize = useLocalize();
+  const queryClient = useQueryClient();
   const search = useRecoilValue(store.search);
+  const conversation = useRecoilValue(store.conversationByIndex(0));
   const getConversation = useGetConversation(0);
   const { favorites, reorderFavorites, isLoading: isFavoritesLoading } = useFavorites();
-  const showAgentMarketplace = useShowMarketplace();
 
   const { newConversation } = useNewConvo();
   const assistantsMap = useAssistantsMapContext();
@@ -178,19 +177,21 @@ export default function FavoritesList({
     [_onSelectSpec, isSmallScreen, toggleNav],
   );
 
-  const marketplaceRef = useRef<HTMLDivElement>(null);
+  const newChatRef = useRef<HTMLDivElement>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
 
-  const handleAgentMarketplace = useCallback(() => {
-    navigate('/agents');
+  const handleNewChat = useCallback(() => {
+    clearMessagesCache(queryClient, conversation?.conversationId);
+    queryClient.invalidateQueries([QueryKeys.messages]);
+    newConversation();
     if (isSmallScreen && toggleNav) {
       toggleNav();
     }
-  }, [navigate, isSmallScreen, toggleNav]);
+  }, [queryClient, conversation?.conversationId, newConversation, isSmallScreen, toggleNav]);
 
   const handleRemoveFocus = useCallback(() => {
-    if (marketplaceRef.current) {
-      marketplaceRef.current.focus();
+    if (newChatRef.current) {
+      newChatRef.current.focus();
       return;
     }
     const nextFavorite = listContainerRef.current?.querySelector<HTMLElement>(
@@ -341,15 +342,11 @@ export default function FavoritesList({
     return null;
   }
 
-  if (!isFavoritesLoading && safeFavorites.length === 0 && !showAgentMarketplace) {
-    return null;
-  }
-
   if (isFavoritesLoading) {
     return (
       <div className="mb-2 flex flex-col pb-2">
         <div className="mt-1 flex flex-col gap-1">
-          {showAgentMarketplace && <MarketplaceSkeleton />}
+          <NewChatSkeleton />
           <FavoriteItemSkeleton />
         </div>
       </div>
@@ -362,40 +359,35 @@ export default function FavoritesList({
         {/* Show skeletons for ALL items while agents are still loading */}
         {isAgentsLoading ? (
           <>
-            {/* Marketplace skeleton */}
-            {showAgentMarketplace && <MarketplaceSkeleton />}
-            {/* Favorite items skeletons */}
+            <NewChatSkeleton />
             {safeFavorites.map((_, index) => (
               <FavoriteItemSkeleton key={`skeleton-${index}`} />
             ))}
           </>
         ) : (
           <>
-            {/* Agent Marketplace button */}
-            {showAgentMarketplace && (
-              <div
-                ref={marketplaceRef}
-                role="button"
-                tabIndex={0}
-                aria-label={localize('com_agents_marketplace')}
-                className="group relative flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm text-text-primary outline-none hover:bg-surface-active-alt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white"
-                onClick={handleAgentMarketplace}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleAgentMarketplace();
-                  }
-                }}
-                data-testid="nav-agents-marketplace-button"
-              >
-                <div className="flex flex-1 items-center truncate pr-6">
-                  <div className="mr-2 h-5 w-5">
-                    <LayoutGrid className="h-5 w-5 text-text-primary" />
-                  </div>
-                  <span className="truncate">{localize('com_agents_marketplace')}</span>
+            <div
+              ref={newChatRef}
+              role="button"
+              tabIndex={0}
+              aria-label={localize('com_ui_new_chat')}
+              className="group relative flex w-full cursor-pointer items-center justify-between rounded-lg px-3 py-2 text-sm text-text-primary outline-none hover:bg-surface-active-alt focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black dark:focus-visible:ring-white"
+              onClick={handleNewChat}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleNewChat();
+                }
+              }}
+              data-testid="nav-new-chat-button"
+            >
+              <div className="flex flex-1 items-center truncate pr-6">
+                <div className="mr-2 h-5 w-5">
+                  <SquarePen className="h-5 w-5 text-text-primary" />
                 </div>
+                <span className="truncate">{localize('com_ui_new_chat')}</span>
               </div>
-            )}
+            </div>
             {safeFavorites.map((fav, index) => {
               if (fav.agentId) {
                 const agent = combinedAgentsMap?.[fav.agentId];
